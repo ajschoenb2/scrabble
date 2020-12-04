@@ -1,5 +1,77 @@
 #include <iostream>
 #include <sstream>
+#include <fstream>
+#include <vector>
+
+class TrieNode {
+private:
+    bool terminal;
+    TrieNode* children[26];
+
+public:
+    TrieNode(bool terminal) : terminal(terminal) {
+        for (int i = 0; i < 26; i++) children[i] = nullptr;
+    }
+
+    void addChild(char letter, bool terminal) {
+        children[letter - 'A'] = new TrieNode(terminal);
+    }
+
+    TrieNode* childAt(char letter) {
+        return children[letter - 'A'];
+    }
+
+    void makeTerminal() { terminal = true; }
+
+    bool isTerminal() { return terminal; }
+};
+
+class Trie {
+private:
+    TrieNode* root;
+
+    static TrieNode* fromWords(std::vector<std::string> words) {
+        TrieNode* ret = new TrieNode(false);
+        for (std::string word : words) {
+            TrieNode* curr = ret;
+            for (char ch : word) {
+                ch = toupper(ch);
+                if (curr->childAt(ch) == nullptr) {
+                    curr->addChild(ch, false);
+                }
+                curr = curr->childAt(ch);
+            }
+            curr->makeTerminal();
+        }
+        return ret;
+    }
+
+public:
+    Trie(std::vector<std::string> words) : root(fromWords(words)) {}
+
+    Trie(std::string filename) {
+        std::ifstream fin(filename);
+        std::vector<std::string> words;
+        if (fin.is_open()) {
+            std::string line;
+            while (getline(fin, line)) {
+                words.push_back(line);
+            }
+            fin.close();
+        }
+        root = fromWords(words);
+    }
+
+    bool isLegal(std::string word) {
+        TrieNode* curr = root;
+        for (char ch : word) {
+            ch = toupper(ch);
+            curr = curr->childAt(ch);
+            if (curr == nullptr) return false;
+        }
+        return curr->isTerminal();
+    }
+};
 
 class Tile {
 private:
@@ -54,9 +126,15 @@ class Board {
 private:
     static constexpr int SIZE = 15;
 
+    static constexpr int POINTS[] = {
+        1, 3, 3, 2, 1, 4, 2, 4, 1, 8, 5, 1, 3, 1, 1, 3, 10, 1, 1, 1, 1, 4, 4, 8, 4, 10
+    };
+
     Cell board[SIZE][SIZE];
 
 public:
+    enum Direction { ACROSS = 0, DOWN };
+
     Board() {
         // setup DW cells
         board[1][1]  .setType(Cell::Type::DW);
@@ -128,6 +206,29 @@ public:
         board[13][9] .setType(Cell::Type::TL);
     }
 
+    int placeWord(std::string word, int x, int y, Direction dir) {
+        std::cerr << "warning: placeWord not considering legality or cross-words" << std::endl;
+        int score = 0;
+        if (dir == Direction::ACROSS) {
+            if (x + word.length() >= SIZE) return 0;
+            for (unsigned int i = 0; i < word.length(); i++) {
+                char ch = toupper(word[i]);
+                int points = POINTS[ch - 'A'];
+                board[y][x + i].fill(new Tile(ch, points));
+                score += points;
+            }
+        } else if (dir == Direction::DOWN) {
+            if (y + word.length() >= SIZE) return 0;
+            for (unsigned int i = 0; i < word.length(); i++) {
+                char ch = toupper(word[i]);
+                int points = POINTS[ch - 'A'];
+                board[y + i][x].fill(new Tile(ch, points));
+                score += points;
+            }
+        }
+        return score;
+    }
+
     std::string toString() {
         std::stringstream ret;
         for (int i = 0; i < SIZE; i++) {
@@ -144,9 +245,21 @@ public:
 };
 
 int main() {
+    std::cout << "Scrabble" << std::endl;
+
+    Trie* trie = new Trie("dict.txt");
+    std::vector<std::pair<std::string, bool>> tests = {{"foo", false}, {"bar", true}, {"this", true}, {"is", true}, {"a", false}, {"trie", true}, {"thi", false}, {"tri", false}, {"fo", false}, {"ba", true}, {"nonsense", true}, {"garbage", true}};
+    for (std::pair<std::string, bool> test : tests) {
+        if (trie->isLegal(test.first) != test.second) std::cout << "Failed test {" << test.first << ", " << test.second << "}" << std::endl;
+    }
+
     Board board{};
 
-    std::cout << "Scrabble" << std::endl;
+    // std::cout << board.toString() << std::endl;
+
+    board.placeWord("foo", 0, 0, Board::Direction::ACROSS);
+    board.placeWord("bar", 7, 7, Board::Direction::DOWN);
+
     std::cout << board.toString() << std::endl;
 
     return 0;
