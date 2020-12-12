@@ -88,7 +88,7 @@ public:
 
     std::string toString() {
         std::stringstream ret;
-        ret << "{" << letter << ", " << points << "}";
+        ret << " \e[1;32m" << letter << points << "\e[0m ";
         return ret.str();
     }
 };
@@ -98,26 +98,73 @@ public:
     enum Type { NORMAL = 0, DW, TW, DL, TL };
 
 private:
-    Tile* tile;
+    Tile tile;
     Type type;
+    uint32_t valid_crosses;
 
 public:
-    Cell(Type type) : tile(nullptr), type(type)
+    Cell(Type type) : tile('\0', 0), type(type), valid_crosses(0xFFFFFFFF)
     {};
 
     Cell() : Cell(Type::NORMAL) {}
 
-    void fill(Tile* tile) { this->tile = tile; }
+    void fill(Tile tile) { this->tile = tile; }
 
     void setType(Type type) { this->type = type; }
 
-    bool isEmpty() { return tile == nullptr; }
+    bool isEmpty() { return tile.getLetter() == '\0'; }
+
+    Tile getTile() { return tile; }
 
     Type getType() { return type; }
 
+    bool isValidCross(char ch) {
+        int idx = ch - 'A';
+        return (valid_crosses & (1 << idx)) != 0;
+    }
+
+    void updateValidCrosses(Trie* trie, std::string across_prefix, std::string across_postfix,
+                            std::string down_prefix, std::string down_postfix) {
+        if (isEmpty()) {
+            valid_crosses = 0;
+            for (char ch = 'A'; ch <= 'Z'; ch++) {
+                int idx = ch - 'A';
+                bool isLegal = true;
+                if (!(across_prefix == "" && across_postfix == "")) {
+                    isLegal = isLegal && trie->isLegal(across_prefix + ch + across_postfix);
+                }
+                if (!(down_prefix == "" && down_postfix == "")) {
+                    isLegal = isLegal && trie->isLegal(down_prefix + ch + down_postfix);
+                }
+                if (isLegal) valid_crosses |= (1 << idx);
+            }
+        }
+    }
+
     std::string toString() {
         std::stringstream ret;
-        ret << "{" << (tile != nullptr ? tile->toString() : "{}") << ", " << type << "}";
+        if (isEmpty()) {
+            switch (type) {
+                case DW: {
+                    ret << " \e[1;35mDW\e[0m ";
+                } break;
+                case TW: {
+                    ret << " \e[1;31mTW\e[0m ";
+                } break;
+                case DL: {
+                    ret << " \e[1;36mDL\e[0m ";
+                } break;
+                case TL: {
+                    ret << " \e[1;34mTL\e[0m ";
+                } break;
+                default: {
+                    ret << "    ";
+                } break;
+            }
+        }
+        else {
+            ret << tile.toString();
+        }
         return ret.str();
     }
 };
@@ -130,12 +177,117 @@ private:
         1, 3, 3, 2, 1, 4, 2, 4, 1, 8, 5, 1, 3, 1, 1, 3, 10, 1, 1, 1, 1, 4, 4, 8, 4, 10
     };
 
+    std::stringstream blank_line;
+
     Cell board[SIZE][SIZE];
+
+    Trie* trie;
 
 public:
     enum Direction { ACROSS = 0, DOWN };
 
-    Board() {
+private:
+    std::string getPrefix(int x, int y, Direction dir) {
+        std::string ret = "";
+        if (dir == Direction::ACROSS) x--;
+        else if (dir == Direction::DOWN) y--;
+        while (!board[y][x].isEmpty() && x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
+            ret = board[y][x].getTile().getLetter() + ret;
+            if (dir == Direction::ACROSS) {
+                x--;
+            } else if (dir == Direction::DOWN) {
+                y--;
+            }
+        }
+        return ret;
+    }
+
+    std::string getPostfix(int x, int y, Direction dir) {
+        std::string ret = "";
+        if (dir == Direction::ACROSS) x++;
+        else if (dir == Direction::DOWN) y++;
+        while (!board[y][x].isEmpty() && x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
+            ret += board[y][x].getTile().getLetter();
+            if (dir == Direction::ACROSS) {
+                x++;
+            } else if (dir == Direction::DOWN) {
+                y++;
+            }
+        }
+        return ret;
+    }
+
+    void updateAdjacentValidCrosses(int x, int y) {
+        if (x > 0) {
+            board[y][x - 1].updateValidCrosses(trie, 
+                            getPrefix(x - 1, y, Direction::ACROSS),
+                            getPostfix(x - 1, y, Direction::ACROSS),
+                            getPrefix(x - 1, y, Direction::DOWN),
+                            getPostfix(x - 1, y, Direction::DOWN));
+            // if (y > 0) {
+                // board[y - 1][x - 1].updateValidCrosses(trie,
+                                    // getPrefix(x - 1, y - 1, Direction::ACROSS),
+                                    // getPostfix(x - 1, y - 1, Direction::ACROSS),
+                                    // getPrefix(x - 1, y - 1, Direction::DOWN),
+                                    // getPostfix(x - 1, y - 1, Direction::DOWN));
+            // }
+            // if (y < SIZE - 1) {
+                // board[y + 1][x - 1].updateValidCrosses(trie,
+                                    // getPrefix(x - 1, y + 1, Direction::ACROSS),
+                                    // getPostfix(x - 1, y + 1, Direction::ACROSS),
+                                    // getPrefix(x - 1, y + 1, Direction::DOWN),
+                                    // getPostfix(x - 1, y + 1, Direction::DOWN));
+            // }
+        }
+        if (x < SIZE - 1) {
+            board[y][x + 1].updateValidCrosses(trie, 
+                            getPrefix(x + 1, y, Direction::ACROSS),
+                            getPostfix(x + 1, y, Direction::ACROSS),
+                            getPrefix(x + 1, y, Direction::DOWN),
+                            getPostfix(x + 1, y, Direction::DOWN));
+            // if (y > 0) {
+                // board[y - 1][x - 1].updateValidCrosses(trie,
+                                    // getPrefix(x + 1, y - 1, Direction::ACROSS),
+                                    // getPostfix(x + 1, y - 1, Direction::ACROSS),
+                                    // getPrefix(x + 1, y - 1, Direction::DOWN),
+                                    // getPostfix(x + 1, y - 1, Direction::DOWN));
+            // }
+            // if (y < SIZE - 1) {
+                // board[y + 1][x - 1].updateValidCrosses(trie,
+                                    // getPrefix(x + 1, y + 1, Direction::ACROSS),
+                                    // getPostfix(x + 1, y + 1, Direction::ACROSS),
+                                    // getPrefix(x + 1, y + 1, Direction::DOWN),
+                                    // getPostfix(x + 1, y + 1, Direction::DOWN));
+            // }
+        }
+        if (y > 0) {
+            board[y - 1][x].updateValidCrosses(trie, 
+                            getPrefix(x, y - 1, Direction::ACROSS),
+                            getPostfix(x, y - 1, Direction::ACROSS),
+                            getPrefix(x, y - 1, Direction::DOWN),
+                            getPostfix(x, y - 1, Direction::DOWN));
+        }
+        if (y < SIZE - 1) {
+            board[y + 1][x].updateValidCrosses(trie, 
+                            getPrefix(x, y + 1, Direction::ACROSS),
+                            getPostfix(x, y + 1, Direction::ACROSS),
+                            getPrefix(x, y + 1, Direction::DOWN),
+                            getPostfix(x, y + 1, Direction::DOWN));
+        }
+    }
+
+public:
+
+    Board() : trie(nullptr) {
+        // setup trie
+        trie = new Trie("dict.txt");
+
+        // setup blank_line
+        for (int i = 0; i < SIZE; i++) {
+            blank_line << "|----";
+        }
+        blank_line << "|" << std::endl;
+
         // setup DW cells
         board[1][1]  .setType(Cell::Type::DW);
         board[1][13] .setType(Cell::Type::DW);
@@ -207,60 +359,133 @@ public:
     }
 
     int placeWord(std::string word, int x, int y, Direction dir) {
-        std::cerr << "warning: placeWord not considering legality or cross-words" << std::endl;
         int score = 0;
+        if (!trie->isLegal(word)) return -1;
         if (dir == Direction::ACROSS) {
-            if (x + word.length() >= SIZE) return 0;
+            if (x + word.length() >= SIZE) return -1;
+            for (unsigned int i = 0; i < word.length(); i++) {
+                char ch = toupper(word[i]);
+                if (!board[y][x + i].isValidCross(ch)) return -1;
+            }
             for (unsigned int i = 0; i < word.length(); i++) {
                 char ch = toupper(word[i]);
                 int points = POINTS[ch - 'A'];
-                board[y][x + i].fill(new Tile(ch, points));
+                Cell& cell = board[y][x + i];
+                cell.fill(Tile(ch, points));
+                updateAdjacentValidCrosses(x + i, y);
                 score += points;
             }
         } else if (dir == Direction::DOWN) {
-            if (y + word.length() >= SIZE) return 0;
+            if (y + word.length() >= SIZE) return -1;
+            for (unsigned int i = 0; i < word.length(); i++) {
+                char ch = toupper(word[i]);
+                if (!board[y + i][x].isValidCross(ch)) return -1;
+            }
             for (unsigned int i = 0; i < word.length(); i++) {
                 char ch = toupper(word[i]);
                 int points = POINTS[ch - 'A'];
-                board[y + i][x].fill(new Tile(ch, points));
+                Cell& cell = board[y + i][x];
+                cell.fill(Tile(ch, points));
+                updateAdjacentValidCrosses(x, y + i);
                 score += points;
             }
         }
         return score;
     }
 
+    Cell getCell(int x, int y) { return board[y][x]; }
+
     std::string toString() {
         std::stringstream ret;
+        ret << blank_line.str();
         for (int i = 0; i < SIZE; i++) {
-            ret << "{";
             for (int j = 0; j < SIZE; j++) {
-                if (j != 0) ret << ", ";
+                ret << "|";
                 ret << board[i][j].toString();
             }
-            ret << "}";
-            if (i != SIZE - 1) ret << std::endl;
+            ret << "|";
+            ret << std::endl << blank_line.str();
         }
         return ret.str();
     }
 };
 
-int main() {
-    std::cout << "Scrabble" << std::endl;
+class Game {
+private:
+    Board board;
+    int scores[2];
+    std::vector<char> racks[2];
 
-    Trie* trie = new Trie("dict.txt");
-    std::vector<std::pair<std::string, bool>> tests = {{"foo", false}, {"bar", true}, {"this", true}, {"is", true}, {"a", false}, {"trie", true}, {"thi", false}, {"tri", false}, {"fo", false}, {"ba", true}, {"nonsense", true}, {"garbage", true}};
-    for (std::pair<std::string, bool> test : tests) {
-        if (trie->isLegal(test.first) != test.second) std::cout << "Failed test {" << test.first << ", " << test.second << "}" << std::endl;
+    void printBoard() {
+        for (int i = 0; i < 50; i++) std::cout << std::endl;
+        std::cout << board.toString();
     }
 
-    Board board{};
+    void humanTurn() {
+        std::cout << "Enter a move (word, x, y, direction): ";
+        std::string move;
+        getline(std::cin, move);
+        std::stringstream buf(move);
+        std::string word, sdir;
+        Board::Direction dir;
+        int x, y;
+        buf >> word >> x >> y >> sdir;
+        if (sdir == "D") dir = Board::Direction::DOWN;
+        else if (sdir == "A") dir = Board::Direction::ACROSS;
+        else {
+            std::cerr << "Invalid direction, must be [AD]" << std::endl;
+            return;
+        }
+        int points = board.placeWord(word, x, y, dir);
+        if (points > 0) {
+            scores[0] += points;
+            printBoard();
+        } else {
+            std::cerr << "Invalid move" << std::endl;
+        }
+    }
 
-    // std::cout << board.toString() << std::endl;
+    void computerTurn() {
+    }
 
-    board.placeWord("foo", 0, 0, Board::Direction::ACROSS);
-    board.placeWord("bar", 7, 7, Board::Direction::DOWN);
+    void round() {
+        humanTurn();
+        computerTurn();
+    }
 
-    std::cout << board.toString() << std::endl;
+public:
+    Game() : board() {
+        scores[0] = scores[1] = 0;
+        racks[0] = racks[1] = { '\0', '\0', '\0', '\0', '\0', '\0', '\0' };
+    }
+
+    void play() {
+        printBoard();
+        while (true) {
+            round();
+        }
+    }
+};
+
+int main() {
+    Game game;
+    game.play();
+
+
+    // std::cout << "Scrabble" << std::endl;
+
+    // Board board;
+
+    // std::cout << board.placeWord("bababab", 5, 10, Board::Direction::DOWN) << std::endl;
+    // std::cout << board.placeWord("foo", 0, 0, Board::Direction::ACROSS) << std::endl;
+    // std::cout << board.placeWord("bar", 7, 7, Board::Direction::DOWN) << std::endl;
+    // std::cout << board.placeWord("box", 8, 5, Board::Direction::DOWN) << std::endl;
+    
+    // for (char ch = 'A'; ch <= 'Z'; ch++) {
+        // std::cout << ch << ": " << board.getCell(8, 7).isValidCross(ch) << std::endl;
+    // }
+
+    // std::cout << board.toString();
 
     return 0;
 }
