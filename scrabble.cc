@@ -88,7 +88,7 @@ public:
 
     std::string toString() {
         std::stringstream ret;
-        ret << " \e[1;32m" << letter << points << "\e[0m ";
+        ret << " \e[1;33m" << letter << points << "\e[0m ";
         return ret.str();
     }
 };
