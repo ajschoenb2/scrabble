@@ -3,6 +3,12 @@
 #include <fstream>
 #include <vector>
 #include <set>
+#include <deque>
+#include <random>
+#include <chrono>
+#include <algorithm>
+#include <tuple>
+#include <cassert>
 
 class TrieNode {
 private:
@@ -72,7 +78,11 @@ public:
         }
         return curr->isTerminal();
     }
+
+    TrieNode* getRoot() { return root; }
 };
+
+Trie* trie = nullptr;
 
 enum Direction { ACROSS = 0, DOWN };
 
@@ -198,38 +208,6 @@ private:
 
     Cell board[SIZE][SIZE];
 
-    Trie* trie;
-
-    std::string getPrefix(int x, int y, Direction dir) {
-        std::string ret = "";
-        if (dir == Direction::ACROSS) x--;
-        else if (dir == Direction::DOWN) y--;
-        while (!board[y][x].isEmpty() && x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
-            ret = board[y][x].getTile().getLetter() + ret;
-            if (dir == Direction::ACROSS) {
-                x--;
-            } else if (dir == Direction::DOWN) {
-                y--;
-            }
-        }
-        return ret;
-    }
-
-    std::string getPostfix(int x, int y, Direction dir) {
-        std::string ret = "";
-        if (dir == Direction::ACROSS) x++;
-        else if (dir == Direction::DOWN) y++;
-        while (!board[y][x].isEmpty() && x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
-            ret += board[y][x].getTile().getLetter();
-            if (dir == Direction::ACROSS) {
-                x++;
-            } else if (dir == Direction::DOWN) {
-                y++;
-            }
-        }
-        return ret;
-    }
-
     int getPrefixPoints(int x, int y, Direction dir) {
         int ret = 0;
         if (dir == Direction::ACROSS) x--;
@@ -267,20 +245,6 @@ private:
                             getPostfix(x - 1, y, Direction::ACROSS),
                             getPrefix(x - 1, y, Direction::DOWN),
                             getPostfix(x - 1, y, Direction::DOWN));
-            // if (y > 0) {
-                // board[y - 1][x - 1].updateValidCrosses(trie,
-                                    // getPrefix(x - 1, y - 1, Direction::ACROSS),
-                                    // getPostfix(x - 1, y - 1, Direction::ACROSS),
-                                    // getPrefix(x - 1, y - 1, Direction::DOWN),
-                                    // getPostfix(x - 1, y - 1, Direction::DOWN));
-            // }
-            // if (y < SIZE - 1) {
-                // board[y + 1][x - 1].updateValidCrosses(trie,
-                                    // getPrefix(x - 1, y + 1, Direction::ACROSS),
-                                    // getPostfix(x - 1, y + 1, Direction::ACROSS),
-                                    // getPrefix(x - 1, y + 1, Direction::DOWN),
-                                    // getPostfix(x - 1, y + 1, Direction::DOWN));
-            // }
         }
         if (x < SIZE - 1) {
             board[y][x + 1].updateValidCrosses(trie, 
@@ -288,20 +252,6 @@ private:
                             getPostfix(x + 1, y, Direction::ACROSS),
                             getPrefix(x + 1, y, Direction::DOWN),
                             getPostfix(x + 1, y, Direction::DOWN));
-            // if (y > 0) {
-                // board[y - 1][x - 1].updateValidCrosses(trie,
-                                    // getPrefix(x + 1, y - 1, Direction::ACROSS),
-                                    // getPostfix(x + 1, y - 1, Direction::ACROSS),
-                                    // getPrefix(x + 1, y - 1, Direction::DOWN),
-                                    // getPostfix(x + 1, y - 1, Direction::DOWN));
-            // }
-            // if (y < SIZE - 1) {
-                // board[y + 1][x - 1].updateValidCrosses(trie,
-                                    // getPrefix(x + 1, y + 1, Direction::ACROSS),
-                                    // getPostfix(x + 1, y + 1, Direction::ACROSS),
-                                    // getPrefix(x + 1, y + 1, Direction::DOWN),
-                                    // getPostfix(x + 1, y + 1, Direction::DOWN));
-            // }
         }
         if (y > 0) {
             board[y - 1][x].updateValidCrosses(trie, 
@@ -319,12 +269,50 @@ private:
         }
     }
 
+    bool isLegalHelper(std::string word, unsigned int i, int x, int y, Direction dir, std::multiset<char>& rack) {
+        if (i >= word.length()) return true;
+        char ch = toupper(word[i]);
+        Cell cell;
+        if (dir == Direction::ACROSS) {
+            cell = board[y][x + i];
+            if ((!cell.isValidCross(ch, Direction::DOWN) ||
+                  (rack.find(ch) == rack.end() && rack.find(' ') == rack.end())) &&
+                  cell.getTile().getLetter() != ch) {
+                return false;
+            }
+        } else if (dir == Direction::DOWN) {
+            cell = board[y + i][x];
+            if ((!cell.isValidCross(ch, Direction::ACROSS) ||
+                  (rack.find(ch) == rack.end() && rack.find(' ') == rack.end())) &&
+                  cell.getTile().getLetter() != ch) {
+                return false;
+            }
+        }
+        bool remove = cell.isEmpty();
+        if (remove) {
+            auto it = rack.find(ch);
+            if (it == rack.end()) it = rack.find(' ');
+            assert(it != rack.end());
+            ch = *it;
+            rack.erase(it);
+        }
+        bool ret = isLegalHelper(word, i + 1, x, y, dir, rack);
+        if (remove) rack.insert(ch);
+        return ret;
+    }
+
+    bool isLegal(std::string word, int x, int y, Direction dir, std::multiset<char>& rack) {
+        if (dir == Direction::ACROSS) {
+            if (x + word.length() > SIZE) return false;
+        } else if (dir == Direction::DOWN) {
+            if (y + word.length() > SIZE) return false;
+        }
+        return isLegalHelper(word, 0, x, y, dir, rack);
+    }
+
 public:
 
-    Board() : trie(nullptr) {
-        // setup trie
-        trie = new Trie("dict.txt");
-
+    Board() {
         // setup blank_line
         blank_line << "    ";
         for (int i = 0; i < SIZE; i++) {
@@ -402,20 +390,42 @@ public:
         board[13][9] .setType(Cell::Type::TL);
     }
 
-    int placeWord(std::string word, int x, int y, Direction dir) {
+    std::string getPrefix(int x, int y, Direction dir) {
+        std::string ret = "";
+        if (dir == Direction::ACROSS) x--;
+        else if (dir == Direction::DOWN) y--;
+        while (!board[y][x].isEmpty() && x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
+            ret = board[y][x].getTile().getLetter() + ret;
+            if (dir == Direction::ACROSS) {
+                x--;
+            } else if (dir == Direction::DOWN) {
+                y--;
+            }
+        }
+        return ret;
+    }
+
+    std::string getPostfix(int x, int y, Direction dir) {
+        std::string ret = "";
+        if (dir == Direction::ACROSS) x++;
+        else if (dir == Direction::DOWN) y++;
+        while (!board[y][x].isEmpty() && x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
+            ret += board[y][x].getTile().getLetter();
+            if (dir == Direction::ACROSS) {
+                x++;
+            } else if (dir == Direction::DOWN) {
+                y++;
+            }
+        }
+        return ret;
+    }
+
+    int placeWord(std::string word, int x, int y, Direction dir, std::multiset<char>& rack, bool sandbox) {
         int word_score = 0;
         int word_mul = 1;
         int tot_score = 0;
-        if (!trie->isLegal(word)) return -1;
+        if (!trie->isLegal(word) || !isLegal(word, x, y, dir, rack)) return -1;
         if (dir == Direction::ACROSS) {
-            if (x + word.length() > SIZE) return -1;
-            for (unsigned int i = 0; i < word.length(); i++) {
-                char ch = toupper(word[i]);
-                if (!board[y][x + i].isValidCross(ch, Direction::DOWN) &&
-                     board[y][x + i].getTile().getLetter() != ch) {
-                    return -1;
-                }
-            }
             for (unsigned int i = 0; i < word.length(); i++) {
                 char ch = toupper(word[i]);
                 Cell& cell = board[y][x + i];
@@ -446,20 +456,19 @@ public:
                     if (cross_score > 0) {
                         tot_score += cross_score + cross_mul * letter_mul * points;
                     }
-                    cell.fill(Tile(ch, points));
                     word_score += letter_mul * points;
+
+                    if (!sandbox) {
+                        cell.fill(Tile(ch, points));
+                        auto it = rack.find(ch);
+                        if (it == rack.end()) it = rack.find(' ');
+                        assert(it != rack.end());
+                        rack.erase(it);
+                    }
                 } else word_score += cell.getTile().getPoints();
-                updateAdjacentValidCrosses(x + i, y);
+                if (!sandbox) updateAdjacentValidCrosses(x + i, y);
             }
         } else if (dir == Direction::DOWN) {
-            if (y + word.length() > SIZE) return -1;
-            for (unsigned int i = 0; i < word.length(); i++) {
-                char ch = toupper(word[i]);
-                if (!board[y + i][x].isValidCross(ch, Direction::ACROSS) &&
-                     board[y + i][x].getTile().getLetter() != ch) {
-                    return -1;
-                }
-            }
             for (unsigned int i = 0; i < word.length(); i++) {
                 char ch = toupper(word[i]);
                 Cell& cell = board[y + i][x];
@@ -490,13 +499,21 @@ public:
                     if (cross_score > 0) {
                         tot_score += cross_score + cross_mul * letter_mul * points;
                     }
-                    cell.fill(Tile(ch, points));
                     word_score += letter_mul * points;
+
+                    if (!sandbox) {
+                        cell.fill(Tile(ch, points));
+                        auto it = rack.find(ch);
+                        if (it == rack.end()) it = rack.find(' ');
+                        assert(it != rack.end());
+                        rack.erase(it);
+                    }
                 } else word_score += cell.getTile().getPoints();
-                updateAdjacentValidCrosses(x, y + i);
+                if (!sandbox) updateAdjacentValidCrosses(x, y + i);
             }
         }
         tot_score += word_mul * word_score;
+        if (rack.size() == 0) tot_score += 50;
         return tot_score;
     }
 
@@ -523,11 +540,72 @@ public:
     }
 };
 
+class Tilebag {
+private:
+    std::deque<char> bag;
+    std::default_random_engine rand_gen;
+
+public:
+    Tilebag() {
+        unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+        rand_gen = std::default_random_engine(seed);
+
+        for (int i = 0; i < 9; i++)  bag.push_back('A');
+        for (int i = 0; i < 2; i++)  bag.push_back('B');
+        for (int i = 0; i < 2; i++)  bag.push_back('C');
+        for (int i = 0; i < 4; i++)  bag.push_back('D');
+        for (int i = 0; i < 12; i++) bag.push_back('E');
+        for (int i = 0; i < 2; i++)  bag.push_back('F');
+        for (int i = 0; i < 3; i++)  bag.push_back('G');
+        for (int i = 0; i < 2; i++)  bag.push_back('H');
+        for (int i = 0; i < 9; i++)  bag.push_back('I');
+        for (int i = 0; i < 1; i++)  bag.push_back('J');
+        for (int i = 0; i < 1; i++)  bag.push_back('K');
+        for (int i = 0; i < 4; i++)  bag.push_back('L');
+        for (int i = 0; i < 2; i++)  bag.push_back('M');
+        for (int i = 0; i < 6; i++)  bag.push_back('N');
+        for (int i = 0; i < 8; i++)  bag.push_back('O');
+        for (int i = 0; i < 2; i++)  bag.push_back('P');
+        for (int i = 0; i < 1; i++)  bag.push_back('Q');
+        for (int i = 0; i < 6; i++)  bag.push_back('R');
+        for (int i = 0; i < 4; i++)  bag.push_back('S');
+        for (int i = 0; i < 6; i++)  bag.push_back('T');
+        for (int i = 0; i < 4; i++)  bag.push_back('U');
+        for (int i = 0; i < 2; i++)  bag.push_back('V');
+        for (int i = 0; i < 2; i++)  bag.push_back('W');
+        for (int i = 0; i < 1; i++)  bag.push_back('X');
+        for (int i = 0; i < 2; i++)  bag.push_back('Y');
+        for (int i = 0; i < 1; i++)  bag.push_back('Z');
+        for (int i = 0; i < 2; i++)  bag.push_back(' ');
+
+        assert(bag.size() == 100);
+
+        std::shuffle(bag.begin(), bag.end(), rand_gen);
+
+        assert(bag.size() == 100);
+    }
+
+    void draw(std::multiset<char>& rack, int num) {
+        for (int i = 0; i < num; i++) {
+            rack.insert(bag.front());
+            bag.pop_front();
+        }
+    }
+
+    size_t size() {
+        return bag.size();
+    }
+};
+
 class Game {
 private:
     Board board;
+    Tilebag bag;
     int scores[2];
     std::multiset<char> racks[2];
+
+    typedef std::tuple<std::string, int, int, Direction> Option;
+    std::set<Option> computer_options;
 
     void printBoard() {
         for (int i = 0; i < 50; i++) std::cout << std::endl;
@@ -550,6 +628,28 @@ private:
         std::cout << std::endl << std::endl;
 
         std::cout << board.toString();
+
+        std::cout << std::endl << std::endl;
+
+        for (int i = 0; i < 24; i++) std::cout << " ";
+        for (int i = 0; i < 7; i++) std::cout << "|----";
+        std::cout << "|" << std::endl;
+
+        for (int i = 0; i < 24; i++) std::cout << " ";
+        for (auto it = racks[0].begin(); it != racks[0].end(); it++) {
+            std::cout << "| \e[1;33m" << *it;
+            if (*it != ' ') {
+                int points = POINTS[*it - 'A'];
+                std::cout << points << "\e[0m";
+                if (points < 10) std::cout << " ";
+            }
+            else std::cout << " \e[0m ";
+        }
+        std::cout << "|" << std::endl;
+
+        for (int i = 0; i < 24; i++) std::cout << " ";
+        for (int i = 0; i < 7; i++) std::cout << "|----";
+        std::cout << "|" << std::endl;
     }
 
     void humanTurn() {
@@ -567,15 +667,157 @@ private:
             std::cerr << "Invalid direction, must be [AD]" << std::endl;
             return;
         }
-        int points = board.placeWord(word, x, y, dir);
+        int points = board.placeWord(word, x, y, dir, racks[0], false);
         if (points > 0) {
             scores[0] += points;
         } else {
             std::cerr << "Invalid move" << std::endl;
         }
+
+        bag.draw(racks[0], 7 - racks[0].size());
+    }
+
+    void extendRight(int x, int y, int anchor_x, int anchor_y, std::string partial, TrieNode* node, Direction dir) {
+        if (x < 0 || y < 0) return;
+
+        Cell cell = board.getCell(x, y);
+        if (cell.isEmpty()) {
+            if (trie->isLegal(partial) && racks[1].size() < 7 &&
+                (x != anchor_x || y != anchor_y)) {
+                if (dir == Direction::ACROSS) {
+                    computer_options.insert(std::make_tuple(partial, x - partial.length(), y, dir));
+                } else if (dir == Direction::DOWN) {
+                    computer_options.insert(std::make_tuple(partial, x, y - partial.length(), dir));
+                }
+            }
+            for (char ch = 'A'; ch <= 'Z'; ch++) {
+                if (node->childAt(ch) != nullptr &&
+                   (racks[1].find(ch) != racks[1].end() ||
+                    racks[1].find(' ') != racks[1].end())) {
+                    Direction cross_dir;
+                    if (dir == Direction::ACROSS) {
+                        cross_dir = Direction::DOWN;
+                    } else if (dir == Direction::DOWN) {
+                        cross_dir = Direction::ACROSS;
+                    } else assert(0);
+                    if (cell.isValidCross(ch, cross_dir)) {
+                        auto it = racks[1].find(ch);
+                        if (it == racks[1].end()) it = racks[1].find(' ');
+                        assert(it != racks[1].end());
+                        char removed = *it;
+                        racks[1].erase(it);
+                        TrieNode* next_node = node->childAt(ch);
+                        int next_x = -1, next_y = -1;
+                        if (dir == Direction::ACROSS) {
+                            next_x = x + 1;
+                            next_y = y;
+                        } else if (dir == Direction::ACROSS) {
+                            next_x = x;
+                            next_y = y + 1;
+                        }
+                        extendRight(next_x, next_y, anchor_x, anchor_y, partial + ch, next_node, dir);
+                        racks[1].insert(removed);
+                    }
+                }
+            }
+        } else {
+            char ch = cell.getTile().getLetter();
+            if (node->childAt(ch) != nullptr) {
+                TrieNode* next_node = node->childAt(ch);
+                int next_x = -1, next_y = -1;
+                if (dir == Direction::ACROSS) {
+                    next_x = x + 1;
+                    next_y = y;
+                } else if (dir == Direction::ACROSS) {
+                    next_x = x;
+                    next_y = y + 1;
+                }
+                extendRight(next_x, next_y, anchor_x, anchor_y, partial + ch, next_node, dir);
+            }
+        }
+    }
+
+    void leftPart(int x, int y, std::string partial, TrieNode* node, int limit, Direction dir) {
+        if ((dir == Direction::ACROSS && !board.getCell(x - 1, y).isEmpty()) ||
+            (dir == Direction::DOWN && !board.getCell(x, y - 1).isEmpty())) {
+            std::string prefix = board.getPrefix(x, y, dir);
+            for (unsigned int i = 0; i < prefix.length(); i++) {
+                node = node->childAt(prefix[i]);
+                assert(node != nullptr);
+            }
+            limit = 0;
+        }
+        extendRight(x, y, x, y, partial, node, dir);
+        if (limit > 0) {
+            for (char ch = 'A'; ch <= 'Z'; ch++) {
+                if (node->childAt(ch) != nullptr &&
+                   (racks[1].find(ch) != racks[1].end() ||
+                    racks[1].find(' ') != racks[1].end())) {
+                    auto it = racks[1].find(ch);
+                    if (it == racks[1].end()) it = racks[1].find(' ');
+                    assert(it != racks[1].end());
+                    char removed = *it;
+                    racks[1].erase(it);
+                    TrieNode* child = node->childAt(ch);
+                    leftPart(x, y, partial + ch, child, limit - 1, dir);
+                    racks[1].insert(removed);
+                }
+            }
+        }
     }
 
     void computerTurn() {
+        // compute across anchors
+        for (int y = 0; y < Board::SIZE; y++) {
+            int last_anchor_x = 0;
+            for (int x = 0; x < Board::SIZE; x++) {
+                if ((x > 0 && !board.getCell(x - 1, y).isEmpty()) ||
+                    (x < Board::SIZE - 1 && !board.getCell(x + 1, y).isEmpty()) ||
+                    (y > 0 && !board.getCell(x, y - 1).isEmpty()) ||
+                    (y < Board::SIZE - 1 && !board.getCell(x, y + 1).isEmpty())) {
+                    leftPart(x, y, "", trie->getRoot(), x - last_anchor_x - 1, Direction::ACROSS);
+                    last_anchor_x = x;
+                }
+            }
+        }
+
+        // compute down anchors
+        for (int x = 0; x < Board::SIZE; x++) {
+            int last_anchor_y = 0;
+            for (int y = 0; y < Board::SIZE; y++) {
+                if ((x > 0 && !board.getCell(x - 1, y).isEmpty()) ||
+                    (x < Board::SIZE - 1 && !board.getCell(x + 1, y).isEmpty()) ||
+                    (y > 0 && !board.getCell(x, y - 1).isEmpty()) ||
+                    (y < Board::SIZE - 1 && !board.getCell(x, y + 1).isEmpty())) {
+                    leftPart(x, y, "", trie->getRoot(), y - last_anchor_y - 1, Direction::DOWN);
+                    last_anchor_y = y;
+                }
+            }
+        }
+
+        // pick highest-scoring option
+        Option best_option = std::make_tuple("", -1, -1, Direction::ACROSS);
+        int best_points = 0;
+        for (auto option : computer_options) {
+            std::string word = std::get<0>(option);
+            int x = std::get<1>(option);
+            int y = std::get<2>(option);
+            Direction dir = std::get<3>(option);
+            int points = board.placeWord(word, x, y, dir, racks[1], true);
+            if (points > best_points) {
+                best_points = points;
+                best_option = option;
+            }
+            // std::cout << std::get<0>(option) << ", " << std::get<1>(option) << ", " << std::get<2>(option) << ", " << std::get<3>(option) << std::endl;
+        }
+        std::string word = std::get<0>(best_option);
+        int x = std::get<1>(best_option);
+        int y = std::get<2>(best_option);
+        Direction dir = std::get<3>(best_option);
+        int points = board.placeWord(word, x, y, dir, racks[1], false);
+        scores[1] += points;
+
+        bag.draw(racks[1], 7 - racks[1].size());
     }
 
     void round() {
@@ -586,13 +828,42 @@ private:
 
 public:
     Game() : board() {
+        trie = new Trie("dict.txt");
         scores[0] = scores[1] = 0;
-        racks[0] = racks[1] = { '\0', '\0', '\0', '\0', '\0', '\0', '\0' };
+        racks[0] = racks[1] = {};
     }
 
     void play() {
-        while (true) {
+        bag.draw(racks[0], 7);
+        bag.draw(racks[1], 7);
+        while (bag.size() > 0 || (racks[0].size() > 0 && racks[1].size() > 0)) {
             round();
+        }
+
+        for (char ch : racks[0]) {
+            if (ch != ' ') {
+                int points = POINTS[ch - 'A'];
+                scores[0] -= points;
+                scores[1] += points;
+            }
+        }
+
+        for (char ch : racks[1]) {
+            if (ch != ' ') {
+                int points = POINTS[ch - 'A'];
+                scores[0] += points;
+                scores[1] -= points;
+            }
+        }
+
+        printBoard();
+
+        if (scores[0] > scores[1]) {
+            std::cout << "You win!" << std::endl;
+        } else if (scores[0] < scores[1]) {
+            std::cout << "You lose!" << std::endl;
+        } else {
+            std::cout << "A tie!" << std::endl;
         }
     }
 };
@@ -600,22 +871,6 @@ public:
 int main() {
     Game game;
     game.play();
-
-
-    // std::cout << "Scrabble" << std::endl;
-
-    // Board board;
-
-    // std::cout << board.placeWord("bababab", 5, 10, Direction::DOWN) << std::endl;
-    // std::cout << board.placeWord("foo", 0, 0, Direction::ACROSS) << std::endl;
-    // std::cout << board.placeWord("bar", 7, 7, Direction::DOWN) << std::endl;
-    // std::cout << board.placeWord("box", 8, 5, Direction::DOWN) << std::endl;
-    
-    // for (char ch = 'A'; ch <= 'Z'; ch++) {
-        // std::cout << ch << ": " << board.getCell(8, 7).isValidCross(ch) << std::endl;
-    // }
-
-    // std::cout << board.toString();
 
     return 0;
 }
