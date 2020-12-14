@@ -442,6 +442,24 @@ private:
 
     void printBoard() {
         for (int i = 0; i < 50; i++) std::cout << std::endl;
+
+        for (int i = 0; i < 19; i++) std::cout << " ";
+        for (int i = 0; i < 8; i++) std::cout << "|----";
+        std::cout << "|" << std::endl;
+
+        std::cout << "  Your Score: " << scores[0] / 100 << (scores[0] / 10) % 10
+                  << scores[0] % 10 << "  | \e[1;33mS1\e[0m | \e[1;33mC3\e[0m "
+                  << "| \e[1;33mR1\e[0m | \e[1;33mA1\e[0m | \e[1;33mB3\e[0m "
+                  << "| \e[1;33mB3\e[0m | \e[1;33mL1\e[0m | \e[1;33mE1\e[0m "
+                  << "|  Their Score: " << scores[1] / 100
+                  << (scores[1] / 10) % 10 << scores[1] % 10 << std::endl;
+
+        for (int i = 0; i < 19; i++) std::cout << " ";
+        for (int i = 0; i < 8; i++) std::cout << "|----";
+        std::cout << "|" << std::endl;
+
+        std::cout << std::endl << std::endl;
+
         std::cout << board.toString();
     }
 
@@ -463,7 +481,6 @@ private:
         int points = board.placeWord(word, x, y, dir);
         if (points > 0) {
             scores[0] += points;
-            printBoard();
         } else {
             std::cerr << "Invalid move" << std::endl;
         }
@@ -473,6 +490,7 @@ private:
     }
 
     void round() {
+        printBoard();
         humanTurn();
         computerTurn();
     }
@@ -484,7 +502,6 @@ public:
     }
 
     void play() {
-        printBoard();
         while (true) {
             round();
         }
