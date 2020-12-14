@@ -2,6 +2,7 @@
 #include <sstream>
 #include <fstream>
 #include <vector>
+#include <set>
 
 class TrieNode {
 private:
@@ -75,6 +76,10 @@ public:
 
 enum Direction { ACROSS = 0, DOWN };
 
+constexpr int POINTS[] = {
+    1, 3, 3, 2, 1, 4, 2, 4, 1, 8, 5, 1, 3, 1, 1, 3, 10, 1, 1, 1, 1, 4, 4, 8, 4, 10
+};
+
 class Tile {
 private:
     char letter;
@@ -90,7 +95,8 @@ public:
 
     std::string toString() {
         std::stringstream ret;
-        ret << " \e[1;33m" << letter << points << "\e[0m ";
+        ret << " \e[1;33m" << letter << points << "\e[0m";
+        if (points < 10) ret << " ";
         return ret.str();
     }
 };
@@ -188,10 +194,6 @@ public:
     static constexpr int SIZE = 15;
 
 private:
-    static constexpr int POINTS[] = {
-        1, 3, 3, 2, 1, 4, 2, 4, 1, 8, 5, 1, 3, 1, 1, 3, 10, 1, 1, 1, 1, 4, 4, 8, 4, 10
-    };
-
     std::stringstream blank_line;
 
     Cell board[SIZE][SIZE];
@@ -219,6 +221,36 @@ private:
         else if (dir == Direction::DOWN) y++;
         while (!board[y][x].isEmpty() && x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
             ret += board[y][x].getTile().getLetter();
+            if (dir == Direction::ACROSS) {
+                x++;
+            } else if (dir == Direction::DOWN) {
+                y++;
+            }
+        }
+        return ret;
+    }
+
+    int getPrefixPoints(int x, int y, Direction dir) {
+        int ret = 0;
+        if (dir == Direction::ACROSS) x--;
+        else if (dir == Direction::DOWN) y--;
+        while (!board[y][x].isEmpty() && x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
+            ret += board[y][x].getTile().getPoints();
+            if (dir == Direction::ACROSS) {
+                x--;
+            } else if (dir == Direction::DOWN) {
+                y--;
+            }
+        }
+        return ret;
+    }
+
+    int getPostfixPoints(int x, int y, Direction dir) {
+        int ret = 0;
+        if (dir == Direction::ACROSS) x++;
+        else if (dir == Direction::DOWN) y++;
+        while (!board[y][x].isEmpty() && x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
+            ret += board[y][x].getTile().getPoints();
             if (dir == Direction::ACROSS) {
                 x++;
             } else if (dir == Direction::DOWN) {
@@ -371,7 +403,9 @@ public:
     }
 
     int placeWord(std::string word, int x, int y, Direction dir) {
-        int score = 0;
+        int word_score = 0;
+        int word_mul = 1;
+        int tot_score = 0;
         if (!trie->isLegal(word)) return -1;
         if (dir == Direction::ACROSS) {
             if (x + word.length() > SIZE) return -1;
@@ -384,11 +418,38 @@ public:
             }
             for (unsigned int i = 0; i < word.length(); i++) {
                 char ch = toupper(word[i]);
-                int points = POINTS[ch - 'A'];
                 Cell& cell = board[y][x + i];
-                cell.fill(Tile(ch, points));
+                if (cell.isEmpty()) {
+                    int points = POINTS[ch - 'A'];
+                    int cross_mul = 1;
+                    int letter_mul = 1;
+                    switch (cell.getType()) {
+                        case Cell::Type::DW: {
+                            cross_mul *= 2;
+                            word_mul *= 2;
+                        } break;
+                        case Cell::Type::TW: {
+                            cross_mul *= 3;
+                            word_mul *= 3;
+                        } break;
+                        case Cell::Type::DL: {
+                            letter_mul *= 2;
+                        } break;
+                        case Cell::Type::TL: {
+                            letter_mul *= 3;
+                        } break;
+                        default: break;
+                    }
+                    int cross_score = cross_mul *
+                                     (getPrefixPoints(x + i, y, Direction::DOWN) +
+                                      getPostfixPoints(x + i, y, Direction::DOWN));
+                    if (cross_score > 0) {
+                        tot_score += cross_score + cross_mul * letter_mul * points;
+                    }
+                    cell.fill(Tile(ch, points));
+                    word_score += letter_mul * points;
+                } else word_score += cell.getTile().getPoints();
                 updateAdjacentValidCrosses(x + i, y);
-                score += points;
             }
         } else if (dir == Direction::DOWN) {
             if (y + word.length() > SIZE) return -1;
@@ -401,14 +462,42 @@ public:
             }
             for (unsigned int i = 0; i < word.length(); i++) {
                 char ch = toupper(word[i]);
-                int points = POINTS[ch - 'A'];
                 Cell& cell = board[y + i][x];
-                cell.fill(Tile(ch, points));
+                if (cell.isEmpty()) {
+                    int points = POINTS[ch - 'A'];
+                    int cross_mul = 1;
+                    int letter_mul = 1;
+                    switch (cell.getType()) {
+                        case Cell::Type::DW: {
+                            cross_mul *= 2;
+                            word_mul *= 2;
+                        } break;
+                        case Cell::Type::TW: {
+                            cross_mul *= 3;
+                            word_mul *= 3;
+                        } break;
+                        case Cell::Type::DL: {
+                            letter_mul *= 2;
+                        } break;
+                        case Cell::Type::TL: {
+                            letter_mul *= 3;
+                        } break;
+                        default: break;
+                    }
+                    int cross_score = cross_mul *
+                                     (getPrefixPoints(x, y + i, Direction::ACROSS) +
+                                      getPostfixPoints(x, y + i, Direction::ACROSS));
+                    if (cross_score > 0) {
+                        tot_score += cross_score + cross_mul * letter_mul * points;
+                    }
+                    cell.fill(Tile(ch, points));
+                    word_score += letter_mul * points;
+                } else word_score += cell.getTile().getPoints();
                 updateAdjacentValidCrosses(x, y + i);
-                score += points;
             }
         }
-        return score;
+        tot_score += word_mul * word_score;
+        return tot_score;
     }
 
     Cell getCell(int x, int y) { return board[y][x]; }
@@ -438,7 +527,7 @@ class Game {
 private:
     Board board;
     int scores[2];
-    std::vector<char> racks[2];
+    std::multiset<char> racks[2];
 
     void printBoard() {
         for (int i = 0; i < 50; i++) std::cout << std::endl;
