@@ -73,6 +73,8 @@ public:
     }
 };
 
+enum Direction { ACROSS = 0, DOWN };
+
 class Tile {
 private:
     char letter;
@@ -100,10 +102,12 @@ public:
 private:
     Tile tile;
     Type type;
-    uint32_t valid_crosses;
+    uint32_t down_crosses;
+    uint32_t across_crosses;
 
 public:
-    Cell(Type type) : tile('\0', 0), type(type), valid_crosses(0xFFFFFFFF)
+    Cell(Type type)
+        : tile('\0', 0), type(type), down_crosses(0xFFFFFFFF), across_crosses(0xFFFFFFFF)
     {};
 
     Cell() : Cell(Type::NORMAL) {}
@@ -118,26 +122,36 @@ public:
 
     Type getType() { return type; }
 
-    bool isValidCross(char ch) {
+    bool isValidCross(char ch, Direction dir) {
         int idx = ch - 'A';
-        return (valid_crosses & (1 << idx)) != 0;
+        if (dir == Direction::ACROSS) {
+            return (across_crosses & (1 << idx)) != 0;
+        } else if (dir == Direction::DOWN) {
+            return (down_crosses & (1 << idx)) != 0;
+        }
+        return false;
     }
 
     void updateValidCrosses(Trie* trie, std::string across_prefix, std::string across_postfix,
                             std::string down_prefix, std::string down_postfix) {
         if (isEmpty()) {
-            valid_crosses = 0;
+            uint32_t _across_crosses = 0;
+            uint32_t _down_crosses = 0;
             for (char ch = 'A'; ch <= 'Z'; ch++) {
                 int idx = ch - 'A';
-                bool isLegal = true;
                 if (!(across_prefix == "" && across_postfix == "")) {
-                    isLegal = isLegal && trie->isLegal(across_prefix + ch + across_postfix);
+                    if (trie->isLegal(across_prefix + ch + across_postfix)) {
+                        _across_crosses |= (1 << idx);
+                    }
                 }
                 if (!(down_prefix == "" && down_postfix == "")) {
-                    isLegal = isLegal && trie->isLegal(down_prefix + ch + down_postfix);
+                    if (trie->isLegal(down_prefix + ch + down_postfix)) {
+                        _down_crosses |= (1 << idx);
+                    }
                 }
-                if (isLegal) valid_crosses |= (1 << idx);
             }
+            across_crosses = _across_crosses == 0 ? across_crosses : _across_crosses;
+            down_crosses = _down_crosses == 0 ? down_crosses : _down_crosses;
         }
     }
 
@@ -183,10 +197,6 @@ private:
 
     Trie* trie;
 
-public:
-    enum Direction { ACROSS = 0, DOWN };
-
-private:
     std::string getPrefix(int x, int y, Direction dir) {
         std::string ret = "";
         if (dir == Direction::ACROSS) x--;
@@ -362,10 +372,13 @@ public:
         int score = 0;
         if (!trie->isLegal(word)) return -1;
         if (dir == Direction::ACROSS) {
-            if (x + word.length() >= SIZE) return -1;
+            if (x + word.length() > SIZE) return -1;
             for (unsigned int i = 0; i < word.length(); i++) {
                 char ch = toupper(word[i]);
-                if (!board[y][x + i].isValidCross(ch)) return -1;
+                if (!board[y][x + i].isValidCross(ch, Direction::DOWN) &&
+                     board[y][x + i].getTile().getLetter() != ch) {
+                    return -1;
+                }
             }
             for (unsigned int i = 0; i < word.length(); i++) {
                 char ch = toupper(word[i]);
@@ -376,10 +389,13 @@ public:
                 score += points;
             }
         } else if (dir == Direction::DOWN) {
-            if (y + word.length() >= SIZE) return -1;
+            if (y + word.length() > SIZE) return -1;
             for (unsigned int i = 0; i < word.length(); i++) {
                 char ch = toupper(word[i]);
-                if (!board[y + i][x].isValidCross(ch)) return -1;
+                if (!board[y + i][x].isValidCross(ch, Direction::ACROSS) &&
+                     board[y + i][x].getTile().getLetter() != ch) {
+                    return -1;
+                }
             }
             for (unsigned int i = 0; i < word.length(); i++) {
                 char ch = toupper(word[i]);
@@ -427,11 +443,11 @@ private:
         getline(std::cin, move);
         std::stringstream buf(move);
         std::string word, sdir;
-        Board::Direction dir;
+        Direction dir;
         int x, y;
         buf >> word >> x >> y >> sdir;
-        if (sdir == "D") dir = Board::Direction::DOWN;
-        else if (sdir == "A") dir = Board::Direction::ACROSS;
+        if (sdir == "D") dir = Direction::DOWN;
+        else if (sdir == "A") dir = Direction::ACROSS;
         else {
             std::cerr << "Invalid direction, must be [AD]" << std::endl;
             return;
@@ -476,10 +492,10 @@ int main() {
 
     // Board board;
 
-    // std::cout << board.placeWord("bababab", 5, 10, Board::Direction::DOWN) << std::endl;
-    // std::cout << board.placeWord("foo", 0, 0, Board::Direction::ACROSS) << std::endl;
-    // std::cout << board.placeWord("bar", 7, 7, Board::Direction::DOWN) << std::endl;
-    // std::cout << board.placeWord("box", 8, 5, Board::Direction::DOWN) << std::endl;
+    // std::cout << board.placeWord("bababab", 5, 10, Direction::DOWN) << std::endl;
+    // std::cout << board.placeWord("foo", 0, 0, Direction::ACROSS) << std::endl;
+    // std::cout << board.placeWord("bar", 7, 7, Direction::DOWN) << std::endl;
+    // std::cout << board.placeWord("box", 8, 5, Direction::DOWN) << std::endl;
     
     // for (char ch = 'A'; ch <= 'Z'; ch++) {
         // std::cout << ch << ": " << board.getCell(8, 7).isValidCross(ch) << std::endl;
