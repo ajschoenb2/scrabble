@@ -214,6 +214,8 @@ private:
 
     Cell board[SIZE][SIZE];
 
+    bool empty;
+
     int getPrefixPoints(int x, int y, Direction dir) {
         int ret = 0;
         if (dir == Direction::ACROSS) x--;
@@ -308,17 +310,38 @@ private:
     }
 
     bool isLegal(std::string word, int x, int y, Direction dir, std::multiset<char>& rack) {
+        bool touches_middle = false;
+        bool adjacent = false;
         if (dir == Direction::ACROSS) {
             if (x + word.length() > SIZE) return false;
+            for (unsigned int i = 0; i < word.length(); i++) {
+                if (x + i == 7 && y == 7) touches_middle = true;
+                if ((x > 0 && !board[y][x + i - 1].isEmpty()) ||
+                    (x < SIZE - 1 && !board[y][x + i + 1].isEmpty()) ||
+                    (y > 0 && !board[y - 1][x + i].isEmpty()) ||
+                    (y < SIZE - 1 && !board[y + 1][x + i].isEmpty())) {
+                    adjacent = true;
+                }
+            }
         } else if (dir == Direction::DOWN) {
             if (y + word.length() > SIZE) return false;
+            for (unsigned int i = 0; i < word.length(); i++) {
+                if (x == 7 && y + i == 7) touches_middle = true;
+                if ((x > 0 && !board[y + i][x - 1].isEmpty()) ||
+                    (x < SIZE - 1 && !board[y + i][x + 1].isEmpty()) ||
+                    (y > 0 && !board[y + i - 1][x].isEmpty()) ||
+                    (y < SIZE - 1 && !board[y + i + 1][x].isEmpty())) {
+                    adjacent = true;
+                }
+            }
         }
+        if ((empty && !touches_middle) || (!empty && !adjacent)) return false;
         return isLegalHelper(word, 0, x, y, dir, rack);
     }
 
 public:
 
-    Board() {
+    Board() : empty(true) {
         // setup blank_line
         for (int i = 0; i < 4 + padding; i++) blank_line << " ";
         for (int i = 0; i < SIZE; i++) {
@@ -520,6 +543,7 @@ public:
         }
         tot_score += word_mul * word_score;
         if (rack.size() == 0) tot_score += 50;
+        if (!sandbox) empty = false;
         return tot_score;
     }
 
@@ -661,26 +685,32 @@ private:
     }
 
     void humanTurn() {
-        for (int i = 0; i < 4 + padding; i++) std::cout << " ";
-        std::cout << "Enter a move (word, x, y, direction): ";
-        std::string move;
-        getline(std::cin, move);
-        std::stringstream buf(move);
-        std::string word, sdir;
-        Direction dir;
-        int x, y;
-        buf >> word >> x >> y >> sdir;
-        if (sdir == "D") dir = Direction::DOWN;
-        else if (sdir == "A") dir = Direction::ACROSS;
-        else {
-            std::cerr << "Invalid direction, must be [AD]" << std::endl;
-            return;
-        }
-        int points = board.placeWord(word, x, y, dir, racks[0], false);
-        if (points > 0) {
-            scores[0] += points;
-        } else {
-            std::cerr << "Invalid move" << std::endl;
+        bool done = false;
+        while (!done) {
+            for (int i = 0; i < 4 + padding; i++) std::cout << " ";
+            std::cout << "Enter a move (word, x, y, direction): ";
+            std::string move;
+            getline(std::cin, move);
+            std::stringstream buf(move);
+            std::string word, sdir;
+            Direction dir;
+            int x, y;
+            buf >> word >> x >> y >> sdir;
+            if (sdir == "D") dir = Direction::DOWN;
+            else if (sdir == "A") dir = Direction::ACROSS;
+            else {
+                for (int i = 0; i < 4 + padding; i++) std::cout << " ";
+                std::cout << "Invalid direction, must be [AD]" << std::endl;
+                continue;
+            }
+            int points = board.placeWord(word, x, y, dir, racks[0], false);
+            if (points > 0) {
+                scores[0] += points;
+                done = true;
+            } else {
+                for (int i = 0; i < 4 + padding; i++) std::cout << " ";
+                std::cout << "Invalid move" << std::endl;
+            }
         }
 
         bag.draw(racks[0], 7 - racks[0].size());
@@ -819,14 +849,16 @@ private:
             }
             // std::cout << std::get<0>(option) << ", " << std::get<1>(option) << ", " << std::get<2>(option) << ", " << std::get<3>(option) << std::endl;
         }
-        std::string word = std::get<0>(best_option);
-        int x = std::get<1>(best_option);
-        int y = std::get<2>(best_option);
-        Direction dir = std::get<3>(best_option);
-        int points = board.placeWord(word, x, y, dir, racks[1], false);
-        scores[1] += points;
+        if (best_points > 0) {
+            std::string word = std::get<0>(best_option);
+            int x = std::get<1>(best_option);
+            int y = std::get<2>(best_option);
+            Direction dir = std::get<3>(best_option);
+            int points = board.placeWord(word, x, y, dir, racks[1], false);
+            scores[1] += points;
 
-        bag.draw(racks[1], 7 - racks[1].size());
+            bag.draw(racks[1], 7 - racks[1].size());
+        }
     }
 
     void round() {
