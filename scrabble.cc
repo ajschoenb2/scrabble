@@ -184,9 +184,10 @@ public:
 };
 
 class Board {
-private:
+public:
     static constexpr int SIZE = 15;
 
+private:
     static constexpr int POINTS[] = {
         1, 3, 3, 2, 1, 4, 2, 4, 1, 8, 5, 1, 3, 1, 1, 3, 10, 1, 1, 1, 1, 4, 4, 8, 4, 10
     };
@@ -293,6 +294,7 @@ public:
         trie = new Trie("dict.txt");
 
         // setup blank_line
+        blank_line << "    ";
         for (int i = 0; i < SIZE; i++) {
             blank_line << "|----";
         }
@@ -413,8 +415,14 @@ public:
 
     std::string toString() {
         std::stringstream ret;
+        ret << "    ";
+        for (int i = 0; i < Board::SIZE; i++) {
+            ret << "  " << i / 10 << i % 10 << " ";
+        }
+        ret << std::endl;
         ret << blank_line.str();
         for (int i = 0; i < SIZE; i++) {
+            ret << " " << i / 10 << i % 10 << " ";
             for (int j = 0; j < SIZE; j++) {
                 ret << "|";
                 ret << board[i][j].toString();
