@@ -781,8 +781,8 @@ private:
             (dir == Direction::DOWN && !board.getCell(x, y - 1).isEmpty())) {
             std::string prefix = board.getPrefix(x, y, dir);
             for (unsigned int i = 0; i < prefix.length(); i++) {
-                node = node->childAt(prefix[i]);
                 assert(node != nullptr);
+                node = node->childAt(prefix[i]);
             }
             limit = 0;
         }
