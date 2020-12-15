@@ -157,23 +157,27 @@ public:
     void updateValidCrosses(Trie* trie, std::string across_prefix, std::string across_postfix,
                             std::string down_prefix, std::string down_postfix) {
         if (isEmpty()) {
+            bool update_across = (across_prefix != "" || across_postfix != "");
+            bool update_down = (down_prefix != "" || down_postfix != "");
             uint32_t _across_crosses = 0;
             uint32_t _down_crosses = 0;
             for (char ch = 'A'; ch <= 'Z'; ch++) {
                 int idx = ch - 'A';
-                if (!(across_prefix == "" && across_postfix == "")) {
+                if (update_across) {
                     if (trie->isLegal(across_prefix + ch + across_postfix)) {
                         _across_crosses |= (1 << idx);
                     }
                 }
-                if (!(down_prefix == "" && down_postfix == "")) {
+                if (update_down) {
                     if (trie->isLegal(down_prefix + ch + down_postfix)) {
                         _down_crosses |= (1 << idx);
                     }
                 }
             }
-            across_crosses = _across_crosses == 0 ? across_crosses : _across_crosses;
-            down_crosses = _down_crosses == 0 ? down_crosses : _down_crosses;
+            if (update_across) across_crosses = _across_crosses;
+            if (update_down) down_crosses = _down_crosses;
+            // this->across_crosses = update_across ? _across_crosses : across_crosses;
+            // this->down_crosses = update_down ? _down_crosses : down_crosses;
         }
     }
 
@@ -462,6 +466,12 @@ public:
                     int points = POINTS[ch - 'A'];
                     int cross_mul = 1;
                     int letter_mul = 1;
+                    auto it = rack.find(ch);
+                    if (it == rack.end()) {
+                        it = rack.find(' ');
+                        points = 0;
+                    }
+                    assert(it != rack.end());
                     switch (cell.getType()) {
                         case Cell::Type::DW: {
                             cross_mul *= 2;
@@ -488,14 +498,10 @@ public:
                     word_score += letter_mul * points;
 
                     if (!sandbox) {
-                        cell.fill(Tile(ch, points));
-                        auto it = rack.find(ch);
-                        if (it == rack.end()) it = rack.find(' ');
-                        assert(it != rack.end());
                         rack.erase(it);
+                        cell.fill(Tile(ch, points));
                     }
                 } else word_score += cell.getTile().getPoints();
-                if (!sandbox) updateAdjacentValidCrosses(x + i, y);
             }
         } else if (dir == Direction::DOWN) {
             for (unsigned int i = 0; i < word.length(); i++) {
@@ -505,6 +511,12 @@ public:
                     int points = POINTS[ch - 'A'];
                     int cross_mul = 1;
                     int letter_mul = 1;
+                    auto it = rack.find(ch);
+                    if (it == rack.end()) {
+                        it = rack.find(' ');
+                        points = 0;
+                    }
+                    assert(it != rack.end());
                     switch (cell.getType()) {
                         case Cell::Type::DW: {
                             cross_mul *= 2;
@@ -531,14 +543,10 @@ public:
                     word_score += letter_mul * points;
 
                     if (!sandbox) {
-                        cell.fill(Tile(ch, points));
-                        auto it = rack.find(ch);
-                        if (it == rack.end()) it = rack.find(' ');
-                        assert(it != rack.end());
                         rack.erase(it);
+                        cell.fill(Tile(ch, points));
                     }
                 } else word_score += cell.getTile().getPoints();
-                if (!sandbox) updateAdjacentValidCrosses(x, y + i);
             }
         }
         tot_score += word_mul * word_score;
@@ -547,7 +555,7 @@ public:
         return tot_score;
     }
 
-    Cell getCell(int x, int y) { return board[y][x]; }
+    Cell* getCell(int x, int y) { return &board[y][x]; }
 
     std::string toString() {
         std::stringstream ret;
@@ -609,14 +617,11 @@ public:
         for (int i = 0; i < 1; i++)  bag.push_back('Z');
         for (int i = 0; i < 2; i++)  bag.push_back(' ');
 
-        assert(bag.size() == 100);
-
         std::shuffle(bag.begin(), bag.end(), rand_gen);
-
-        assert(bag.size() == 100);
     }
 
     void draw(std::multiset<char>& rack, int num) {
+        num = std::min(static_cast<size_t>(num), bag.size());
         for (int i = 0; i < num; i++) {
             rack.insert(bag.front());
             bag.pop_front();
@@ -691,6 +696,7 @@ private:
             std::cout << "Enter a move (word, x, y, direction): ";
             std::string move;
             getline(std::cin, move);
+            if (move == "PASS") return;
             std::stringstream buf(move);
             std::string word, sdir;
             Direction dir;
@@ -719,8 +725,8 @@ private:
     void extendRight(int x, int y, int anchor_x, int anchor_y, std::string partial, TrieNode* node, Direction dir) {
         if (x < 0 || y < 0) return;
 
-        Cell cell = board.getCell(x, y);
-        if (cell.isEmpty()) {
+        Cell* cell = board.getCell(x, y);
+        if (cell->isEmpty()) {
             if (trie->isLegal(partial) && racks[1].size() < 7 &&
                 (x != anchor_x || y != anchor_y)) {
                 if (dir == Direction::ACROSS) {
@@ -739,7 +745,7 @@ private:
                     } else if (dir == Direction::DOWN) {
                         cross_dir = Direction::ACROSS;
                     } else assert(0);
-                    if (cell.isValidCross(ch, cross_dir)) {
+                    if (cell->isValidCross(ch, cross_dir)) {
                         auto it = racks[1].find(ch);
                         if (it == racks[1].end()) it = racks[1].find(' ');
                         assert(it != racks[1].end());
@@ -760,7 +766,7 @@ private:
                 }
             }
         } else {
-            char ch = cell.getTile().getLetter();
+            char ch = cell->getTile().getLetter();
             if (node->childAt(ch) != nullptr) {
                 TrieNode* next_node = node->childAt(ch);
                 int next_x = -1, next_y = -1;
@@ -777,8 +783,8 @@ private:
     }
 
     void leftPart(int x, int y, std::string partial, TrieNode* node, int limit, Direction dir) {
-        if ((dir == Direction::ACROSS && !board.getCell(x - 1, y).isEmpty()) ||
-            (dir == Direction::DOWN && !board.getCell(x, y - 1).isEmpty())) {
+        if ((dir == Direction::ACROSS && !board.getCell(x - 1, y)->isEmpty()) ||
+            (dir == Direction::DOWN && !board.getCell(x, y - 1)->isEmpty())) {
             std::string prefix = board.getPrefix(x, y, dir);
             for (unsigned int i = 0; i < prefix.length(); i++) {
                 assert(node != nullptr);
@@ -810,10 +816,10 @@ private:
         for (int y = 0; y < Board::SIZE; y++) {
             int last_anchor_x = 0;
             for (int x = 0; x < Board::SIZE; x++) {
-                if ((x > 0 && !board.getCell(x - 1, y).isEmpty()) ||
-                    (x < Board::SIZE - 1 && !board.getCell(x + 1, y).isEmpty()) ||
-                    (y > 0 && !board.getCell(x, y - 1).isEmpty()) ||
-                    (y < Board::SIZE - 1 && !board.getCell(x, y + 1).isEmpty())) {
+                if ((x > 0 && !board.getCell(x - 1, y)->isEmpty()) ||
+                    (x < Board::SIZE - 1 && !board.getCell(x + 1, y)->isEmpty()) ||
+                    (y > 0 && !board.getCell(x, y - 1)->isEmpty()) ||
+                    (y < Board::SIZE - 1 && !board.getCell(x, y + 1)->isEmpty())) {
                     leftPart(x, y, "", trie->getRoot(), x - last_anchor_x - 1, Direction::ACROSS);
                     last_anchor_x = x;
                 }
@@ -824,10 +830,10 @@ private:
         for (int x = 0; x < Board::SIZE; x++) {
             int last_anchor_y = 0;
             for (int y = 0; y < Board::SIZE; y++) {
-                if ((x > 0 && !board.getCell(x - 1, y).isEmpty()) ||
-                    (x < Board::SIZE - 1 && !board.getCell(x + 1, y).isEmpty()) ||
-                    (y > 0 && !board.getCell(x, y - 1).isEmpty()) ||
-                    (y < Board::SIZE - 1 && !board.getCell(x, y + 1).isEmpty())) {
+                if ((x > 0 && !board.getCell(x - 1, y)->isEmpty()) ||
+                    (x < Board::SIZE - 1 && !board.getCell(x + 1, y)->isEmpty()) ||
+                    (y > 0 && !board.getCell(x, y - 1)->isEmpty()) ||
+                    (y < Board::SIZE - 1 && !board.getCell(x, y + 1)->isEmpty())) {
                     leftPart(x, y, "", trie->getRoot(), y - last_anchor_y - 1, Direction::DOWN);
                     last_anchor_y = y;
                 }
@@ -861,10 +867,24 @@ private:
         }
     }
 
+    void recomputeValidCrosses() {
+        for (int x = 0; x < Board::SIZE; x++) {
+            for (int y = 0; y < Board::SIZE; y++) {
+                board.getCell(x, y)->updateValidCrosses(trie, 
+                                     board.getPrefix(x, y, Direction::ACROSS),
+                                     board.getPostfix(x, y, Direction::ACROSS),
+                                     board.getPrefix(x, y, Direction::DOWN),
+                                     board.getPostfix(x, y, Direction::DOWN));
+            }
+        }
+    }
+
     void round() {
         printBoard();
         humanTurn();
+        recomputeValidCrosses();
         computerTurn();
+        recomputeValidCrosses();
     }
 
 public:
