@@ -643,7 +643,10 @@ private:
     typedef std::tuple<std::string, int, int, Direction> Option;
     std::set<Option> computer_options;
 
-    void printBoard() {
+    enum ComputerMode { EASY = 0, HARD, IMPOSSIBLE };
+    ComputerMode difficulty = ComputerMode::HARD;
+
+    void printBoard(bool show_diff) {
         for (int i = 0; i < 50; i++) std::cout << std::endl;
 
         for (int i = 0; i < 19 + padding; i++) std::cout << " ";
@@ -662,7 +665,26 @@ private:
         for (int i = 0; i < 8; i++) std::cout << "|----";
         std::cout << "|" << std::endl;
 
-        std::cout << std::endl << std::endl;
+        std::cout << std::endl;
+
+        std::string diff_string = "";
+        switch (difficulty) {
+            case ComputerMode::EASY: {
+                diff_string = "EASY MODE";
+            } break;
+            case ComputerMode::HARD: {
+                diff_string = "HARD MODE";
+            } break;
+            case ComputerMode::IMPOSSIBLE: {
+                diff_string = "IMPOSSIBLE MODE";
+            } break;
+            default: break;
+        }
+        for (unsigned int i = 0; i < padding + (80 - diff_string.length()) / 2; i++) std::cout << " ";
+        if (show_diff) std::cout << "\e[1;33m" << diff_string << "\e[0m" << std::endl;
+        else std::cout << std::endl;
+
+        std::cout << std::endl;
 
         std::cout << board.toString();
 
@@ -673,14 +695,20 @@ private:
         std::cout << "|" << std::endl;
 
         for (int i = 0; i < 24 + padding; i++) std::cout << " ";
-        for (auto it = racks[0].begin(); it != racks[0].end(); it++) {
-            std::cout << "| \e[1;33m" << *it;
-            if (*it != ' ') {
-                int points = POINTS[*it - 'A'];
-                std::cout << points << "\e[0m";
-                if (points < 10) std::cout << " ";
+        // for (auto it = racks[0].begin(); it != racks[0].end(); it++) {
+        for (unsigned int i = 0; i < 7; i++) {
+            if (i >= racks[0].size()) {
+                std::cout << "|    ";
+            } else {
+                char ch = *std::next(racks[0].begin(), i);
+                std::cout << "| \e[1;33m" << ch;
+                if (ch != ' ') {
+                    int points = POINTS[ch - 'A'];
+                    std::cout << points << "\e[0m";
+                    if (points < 10) std::cout << " ";
+                }
+                else std::cout << " \e[0m ";
             }
-            else std::cout << " \e[0m ";
         }
         std::cout << "|" << std::endl;
 
@@ -723,7 +751,7 @@ private:
     }
 
     void extendRight(int x, int y, int anchor_x, int anchor_y, std::string partial, TrieNode* node, Direction dir) {
-        if (x < 0 || y < 0) return;
+        if (x < 0 || y < 0 || node == nullptr) return;
 
         Cell* cell = board.getCell(x, y);
         if (cell->isEmpty()) {
@@ -783,15 +811,6 @@ private:
     }
 
     void leftPart(int x, int y, std::string partial, TrieNode* node, int limit, Direction dir) {
-        if ((dir == Direction::ACROSS && !board.getCell(x - 1, y)->isEmpty()) ||
-            (dir == Direction::DOWN && !board.getCell(x, y - 1)->isEmpty())) {
-            std::string prefix = board.getPrefix(x, y, dir);
-            for (unsigned int i = 0; i < prefix.length(); i++) {
-                assert(node != nullptr);
-                node = node->childAt(prefix[i]);
-            }
-            limit = 0;
-        }
         extendRight(x, y, x, y, partial, node, dir);
         if (limit > 0) {
             for (char ch = 'A'; ch <= 'Z'; ch++) {
@@ -811,16 +830,31 @@ private:
         }
     }
 
+    void genWords(int x, int y, int limit, Direction dir) {
+        TrieNode* node = trie->getRoot();
+        if ((dir == Direction::ACROSS && !board.getCell(x - 1, y)->isEmpty()) ||
+            (dir == Direction::DOWN && !board.getCell(x, y - 1)->isEmpty())) {
+            std::string prefix = board.getPrefix(x, y, dir);
+            for (unsigned int i = 0; i < prefix.length(); i++) {
+                assert(node != nullptr);
+                node = node->childAt(prefix[i]);
+            }
+            extendRight(x, y, x, y, prefix, node, dir);
+        }
+        else leftPart(x, y, "", node, limit, dir);
+    }
+
     void computerTurn() {
         // compute across anchors
         for (int y = 0; y < Board::SIZE; y++) {
             int last_anchor_x = 0;
             for (int x = 0; x < Board::SIZE; x++) {
-                if ((x > 0 && !board.getCell(x - 1, y)->isEmpty()) ||
+                if (board.getCell(x, y)->isEmpty() &&
+                    ((x > 0 && !board.getCell(x - 1, y)->isEmpty()) ||
                     (x < Board::SIZE - 1 && !board.getCell(x + 1, y)->isEmpty()) ||
                     (y > 0 && !board.getCell(x, y - 1)->isEmpty()) ||
-                    (y < Board::SIZE - 1 && !board.getCell(x, y + 1)->isEmpty())) {
-                    leftPart(x, y, "", trie->getRoot(), x - last_anchor_x - 1, Direction::ACROSS);
+                    (y < Board::SIZE - 1 && !board.getCell(x, y + 1)->isEmpty()))) {
+                    genWords(x, y, x - last_anchor_x - 1, Direction::ACROSS);
                     last_anchor_x = x;
                 }
             }
@@ -830,11 +864,12 @@ private:
         for (int x = 0; x < Board::SIZE; x++) {
             int last_anchor_y = 0;
             for (int y = 0; y < Board::SIZE; y++) {
-                if ((x > 0 && !board.getCell(x - 1, y)->isEmpty()) ||
+                if (board.getCell(x, y)->isEmpty() &&
+                    ((x > 0 && !board.getCell(x - 1, y)->isEmpty()) ||
                     (x < Board::SIZE - 1 && !board.getCell(x + 1, y)->isEmpty()) ||
                     (y > 0 && !board.getCell(x, y - 1)->isEmpty()) ||
-                    (y < Board::SIZE - 1 && !board.getCell(x, y + 1)->isEmpty())) {
-                    leftPart(x, y, "", trie->getRoot(), y - last_anchor_y - 1, Direction::DOWN);
+                    (y < Board::SIZE - 1 && !board.getCell(x, y + 1)->isEmpty()))) {
+                    genWords(x, y, y - last_anchor_y - 1, Direction::DOWN);
                     last_anchor_y = y;
                 }
             }
@@ -843,7 +878,23 @@ private:
         // pick highest-scoring option
         Option best_option = std::make_tuple("", -1, -1, Direction::ACROSS);
         int best_points = 0;
-        for (auto option : computer_options) {
+        unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+        std::default_random_engine rand_engine(seed);
+        std::uniform_int_distribution<size_t> rand_dist(0, computer_options.size() - 1);
+        int consider_num = 0;
+        switch (difficulty) {
+            case ComputerMode::EASY: {
+                consider_num = computer_options.size() / 4;
+            } break;
+            case ComputerMode::HARD: {
+                consider_num = computer_options.size() / 2;
+            } break;
+            case ComputerMode::IMPOSSIBLE: {
+                consider_num = computer_options.size();
+            } break;
+        }
+        for (int i = 0; i < consider_num; i++) {
+            Option option = *std::next(computer_options.begin(), rand_dist(rand_engine));
             std::string word = std::get<0>(option);
             int x = std::get<1>(option);
             int y = std::get<2>(option);
@@ -853,7 +904,6 @@ private:
                 best_points = points;
                 best_option = option;
             }
-            // std::cout << std::get<0>(option) << ", " << std::get<1>(option) << ", " << std::get<2>(option) << ", " << std::get<3>(option) << std::endl;
         }
         if (best_points > 0) {
             std::string word = std::get<0>(best_option);
@@ -880,7 +930,7 @@ private:
     }
 
     void round() {
-        printBoard();
+        printBoard(true);
         humanTurn();
         recomputeValidCrosses();
         computerTurn();
@@ -888,13 +938,48 @@ private:
     }
 
 public:
-    Game() : board() {
+    Game(ComputerMode difficulty) : board(), difficulty(difficulty) {
         trie = new Trie("dict.txt");
         scores[0] = scores[1] = 0;
         racks[0] = racks[1] = {};
     }
 
+    Game() : Game(ComputerMode::HARD) {}
+
     void play() {
+        printBoard(false);
+
+        for (int i = 0; i < 4 + padding; i++) std::cout << " ";
+        std::cout << "What difficulty would you like?" << std::endl;
+        for (int i = 0; i < 4 + padding; i++) std::cout << " ";
+        std::cout << "E = Easy, H = Hard, I = Impossible" << std::endl;
+        bool done = false;
+        while (!done) {
+            for (int i = 0; i < 4 + padding; i++) std::cout << " ";
+            std::string d;
+            getline(std::cin, d);
+            switch (toupper(d[0])) {
+                case 'E': {
+                    difficulty = ComputerMode::EASY;
+                    done = true;
+                } break;
+                case 'H': {
+                    difficulty = ComputerMode::HARD;
+                    done = true;
+                } break;
+                case 'I': {
+                    difficulty = ComputerMode::IMPOSSIBLE;
+                    done = true;
+                } break;
+                default: {
+                    for (int i = 0; i < 4 + padding; i++) std::cout << " ";
+                    std::cout << "Invalid difficulty, try again." << std::endl;
+                } break;
+            }
+        }
+
+        std::cout << std::flush;
+
         bag.draw(racks[0], 7);
         bag.draw(racks[1], 7);
         while (bag.size() > 0 || (racks[0].size() > 0 && racks[1].size() > 0)) {
@@ -917,7 +1002,7 @@ public:
             }
         }
 
-        printBoard();
+        printBoard(true);
 
         for (int i = 0; i < padding; i++) std::cout << " ";
         if (scores[0] > scores[1]) {
